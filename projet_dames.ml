@@ -1,4 +1,4 @@
-z#! /bin/env ocaml
+#! /bin/env ocaml
 
 (* ···---————————————————————---··· *)
 (* <==== Définition des types ====> *)
@@ -159,7 +159,6 @@ let calcule_pivot ((i, j, k): case) ((x, y, z): case) =
     let alligne ((i, j, k): case) ((x, y, z): case): bool =
         (i = x) || (j = y) || (k = z)
     and milieu_existe ((i, j, k): case): bool =
-        (* (i mod 2 = 0) && (j mod 2 = 0) && (k mod 2 = 0) *)
         est_pair i && est_pair j && est_pair k
     in
     if not (alligne (i, j, k) (x, y, z)) then None
@@ -372,62 +371,6 @@ let appliquer_coup (config: configuration) (action: coup): configuration =
     | Du(c1, c2) -> ajoute_case (supprime_dans_config config c1) c2
 
 
-(* On nous dit de mettre cette fonction a jour mais elle existe pas donc je
-   vais l'inventer en entier *)
-(* Vérifie qu'un coup soit valide, si oui, le joue *)
-let mettre_a_jour_configuration (config: configuration) (action: coup): configuration =
-    if est_coup_valide config action then appliquer_coup config action
-    else failwith "Ce coup est invalide, rejoue fdp"
-
-
-(* ···---———————————————————---··· *)
-(* <==== Vérifier une partie ====> *)
-(* ···---———————————————————---··· *)
-
-(* Donne le score du joueur dont c'est le tour *)
-let score (config: configuration): int =
-    let filtre (coul_joueur: couleur) ((c, coul): case_coloree): bool =
-        coul = coul_joueur
-    and get_score (((i, j, k), coul): case_coloree): int = i
-    and sum (l: int list): int = List.fold_left ( + ) 0 l
-    in
-    let cases_joueur: case_coloree list = List.filter (filtre (List.hd config.coul_joueurs)) config.cases
-    in
-    let liste_score: int list = List.map get_score cases_joueur
-    in
-    sum liste_score
-
-
-(* Vérifie si le joueur dont c'est le tour a gagné *)
-let gagne (config: configuration): bool =
-    let score_gagnant (dim: dimension): int =
-        let cases = remplir_triangle_haut dim (dim + 1, dim, 1)
-        in
-        let score_cases = List.map (fun (i, j, k) -> i) cases
-        in
-        List.fold_right ( + ) 0 score_cases
-    in
-    score config = score_gagnant dim
-
-
-(* (1* Les boucles c'est de l'impératif et l'impératif c'est mal *1) *)
-(* let score_gagnant (dim: dimension): int = *)
-(*     let score = ref 0 *)
-(*     and fac = ref 1 *)
-(*     in *)
-(*     for i = dim * 2 downto dim + 1 *)
-(*     do *)
-(*         score := !score + (i * !fac); *)
-(*         fac := !fac + 1; *)
-(*     done; *)
-(*     !score *)
-
-
-(* ···---—————————————————————————---··· *)
-(* <==== Affichage dans la console ====> *)
-(* ···---—————————————————————————---··· *)
-
-
 (* Affiche le plateau dans le term *)
 let affiche_plateau (config: configuration): unit =
     (* transforme des coordonnees cartesiennes (x,y) en coordonnees de case (i,j,k) *)
@@ -452,27 +395,185 @@ let affiche_plateau (config: configuration): unit =
     in
     loop (2 * config.dim_plateau + 1)
 
-;;
+(* On nous dit de mettre cette fonction a jour mais elle existe pas donc je
+   vais l'inventer en entier *)
+(* Vérifie qu'un coup soit valide, si oui, le joue *)
+let mettre_a_jour_configuration (config: configuration) (action: coup): configuration =
+    (* Printf.printf "uuu\n"; *)
+    (* affiche_plateau config; *)
+    if est_coup_valide config action then appliquer_coup config action
+    else failwith "Ce coup est invalide, rejoue fdp"
 
+
+(* ···---———————————————————---··· *)
+(* <==== Vérifier une partie ====> *)
+(* ···---———————————————————---··· *)
+
+let score (config: configuration): int =
+    let uuu (coul_joueur: couleur) (((i, j, k), coul): case_coloree): int option =
+        if coul = coul_joueur then Some(i)
+        else None
+    in
+    let liste_score = List.filter_map (uuu (List.hd config.coul_joueurs)) config.cases
+    in
+    List.fold_right ( + ) liste_score 0
+
+
+(* Vérifie si le joueur dont c'est le tour a gagné *)
+let gagne (config: configuration): bool =
+    let score_gagnant (dim: dimension): int =
+        let cases = remplir_triangle_haut dim (dim + 1, dim, 1)
+        in
+        let score_cases = List.map (fun (i, j, k) -> i) cases
+        in
+        List.fold_right ( + ) score_cases 0
+    in
+    score config = score_gagnant config.dim_plateau
+
+
+(* (1* Les boucles c'est de l'impératif et l'impératif c'est mal *1) *)
+(* let score_gagnant (dim: dimension): int = *)
+(*     let score = ref 0 *)
+(*     and fac = ref 1 *)
+(*     in *)
+(*     for i = dim * 2 downto dim + 1 *)
+(*     do *)
+(*         score := !score + (i * !fac); *)
+(*         fac := !fac + 1; *)
+(*     done; *)
+(*     !score *)
+
+
+(* (1* Butez moi fais chier merde *1) *)
+(* let est_partie (config: configuration) (liste_coups: coup list): couleur = *)
+(*     let config_finale: configuration = *)
+(*         List.fold_left mettre_a_jour_configuration config liste_coups *)
+(*     in *)
+
+(* Achevez mes souffrances putain *)
+let est_partie (config: configuration) (liste_coups: coup list): couleur =
+    let nb_joueurs = List.length config.coul_joueurs
+    and nb_tours = List.length liste_coups
+    in
+    let i_der_tours = List.init nb_joueurs (fun n -> nb_tours - nb_joueurs - 1)
+    and coups_enumerated = List.mapi (fun i c -> (i, c)) liste_coups
+    in
+    let n_premiers_tours_par_joueurs =
+        List.map (fun i_max ->
+            (List.partition (fun (i, _) -> i <= i_max) coups_enumerated)
+        ) i_der_tours
+    in
+    let n_premier_tours_par_joueurs2 =
+        List.map (fun (l, _) ->
+            (List.map (fun (_, action) -> action) l)
+        ) n_premiers_tours_par_joueurs
+    in
+    let dernier_etat_joueurs =
+        List.map (
+            List.fold_left mettre_a_jour_configuration config 
+        ) n_premier_tours_par_joueurs2
+    in
+    let ont_gagne_joueur = List.map gagne dernier_etat_joueurs
+    in
+    let ont_gagne_indices = List.mapi (fun i b -> (b, i)) ont_gagne_joueur
+    in
+    match associe true ont_gagne_indices with
+    | None -> Libre
+    | Some(i) -> List.nth config.coul_joueurs ((nb_tours - nb_joueurs - 1 + i) mod nb_joueurs)
+
+
+
+(* ···---—————————————————————————---··· *)
+(* <==== Affichage dans la console ====> *)
+(* ···---—————————————————————————---··· *)
+
+
+;;
 
 (* ···---—————---··· *)
 (* <==== Tests ====> *)
 (* ···---—————---··· *)
 
+(* let connard: int list = [10; 11; 12; 13; 14; 15; 16] *)
+(* let (uuu, iii) = List.partition (fun n -> n <= 13) connard *)
+(* ;; *)
+(* Printf.printf "uuu : %s\niii: %s\n" (string_of_int_list uuu) (string_of_int_list iii); *)
 
+(* let config_basique = remplir_init [Vert; Jaune; Rouge] 3 *)
+(* let uuu: configuration = bite config_basique [ *)
+(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
+(*     Du((-4, 3, 1), (-3, 3, 0)); *)
+(*     Du((-4, 2, 2), (-3, 1, 2)); *)
+(*     Sm([(-4, 2, 2); (-2, 0, 2)]); *)
+(*     Du((-3, 3, 0), (-2, 2, 0)); *)
+(*     Sm([(-4, 1, 3); (-2, 1, 1)]); *)
+(*     Du((-3, 1, 2), (-2, 1, 1)); *)
+(*     Du((-4, 2, 2), (-3, 1, 2)); *)
+(*     Sm([(-5, 3, 2); (-1, -1, 2)]); *)
+(* ] *)
+(* ;; *)
 
-affiche_plateau (mettre_a_jour_configuration {
-    cases = [((-4, 2, 2), Vert); ((-2, 0, 2), Vert); ((1, -2, 1), Vert); ((0, 0, 0), Vert); ((-1, 2, -1), Vert); ((2, 0, -2), Vert)];
-    coul_joueurs = [Vert];
-    dim_plateau = 3 } (Sm([(-4, 2, 2); (0, -2, 2); (2, -2, 0); (-2, 2, 0); (0, 2, -2); (4, -2, -2)])));
+let config_basique = remplir_init [Vert; Jaune; Rouge] 3
+let test_partie: coup list = [
+    Sm([(-5, 3, 2); (-3, 1, 2)]);
+    Du((-4, 3, 1), (-3, 3, 0));
+    Du((-4, 2, 2), (-3, 1, 2));
+    Sm([(-4, 2, 2); (-2, 0, 2)]);
+    Du((-3, 3, 0), (-2, 2, 0));
+    Sm([(-4, 1, 3); (-2, 1, 1)]);
+    Du((-3, 1, 2), (-2, 1, 1));
+    Du((-4, 2, 2), (-3, 1, 2));
+    Sm([(-5, 3, 2); (-1, -1, 2)]);
+]
 
-(* affiche_plateau (mettre_a_jour_configuration { *)
-(*     cases = [((-4, 2, 2), Vert); ((-2, 0, 2), Vert); ((1, -2, 1), Vert); ((0, 0, 0), Vert); ((-1, 2, -1), Vert); ((2, 0, -2), Vert)]; *)
-(*     coul_joueurs = [Vert]; *)
-(*     dim_plateau = 3 } (Sm([(-4, 2, 2); (0, -2, 2); (2, -2, 0); (-2, 2, 0); (0, 2, -2); (5, -3, -2)]))); *)
+(* let partie_vert_gagne: coup list = [ *)
+(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
+(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
+(*     Sm([(-5, 2, 3); (-3, 2, 1)]); *)
+(*     Sm([(-4, 1, 3); (-2, 1, 1)]); *)
+(*     Du((-4, 2, 2), (-3, 2, 1)); *)
+(*     Sm([(-4, 2, 2); (-2, 2, 0)]); *)
+(*     Sm([(-5, 2, 3); (-3, 2, 1); (-1, 0, 1)]); *)
+(*     Sm([(-5, 2, 3); (-1, 2, -1); (1, 0, -1)]); *)
+(*     Sm([(-4, 3, 1); (-2, 1, 1)]); *)
+(*     Sm([(-2, 1, 1); (0, 1, -1)]); *)
+(*     Du((-3, 1, 2), (-2, 1, 1)); *)
+(*     Sm([(-4, 1, 3); (0, 1, -1); (0, -3, 3); (4, -3, -1)]); *)
+(*     Sm([(-6, 3, 3); (-2, 1, 1); (0, -1, 1); (2, -3, 1)]); *)
+(*     Sm([(-6, 3, 3); (-2, 3, -1)]); *)
+(*     Sm([(-6, 3, 3); (-4, 3, 1)]); *)
+(*     Sm([(-4, 2, 2); (-2, 0, 2); (0, 0, 0); (0, 2, -2)]); *)
+(*     Sm([(-2, 1, 1); (-2, 5, -3); (0, 3, -3); (2, 1, -3)]); *)
+(*     Sm([(-5, 3, 2); (-3, 3, 0); (-1, 1, 0); (-1, -1, 2)]); *)
+(*     Sm([(-4, 3, 1); (-2, 1, 1); (0, -1, 1)]); *)
+(*     Sm([(1, 0, -1); (3, -2, -1)]); *)
+(*     Sm([(-2, 1, 1); (0, -1, 1); (2, -1, -1); (4, -1, -3)]); *)
+(*     Sm([(0, 1, -1); (4, -1, -3)]); *)
+(*     Sm([(-3, 2, 1); (1, 0, -1)]); *)
+(*     Sm([(-4, 3, 1); (0, 1, -1); (2, -1, -1)]); *)
+(*     Sm([(0, 2, -2); (4, -2, -2)]); *)
+(*     Sm([(-4, 3, 1); (4, -1, -3)]); *)
+(*     Du((-2, 2, 0), (-1, 1, 0)); *)
+(*     Sm([(-3, 1, 2); (1, -1, 0)]); *)
+(*     Sm([(-4, 1, 3); (-2, 1, 1); (6, -3, -3)]); *)
+(*     Du((-3, 2, 1), (-2, 1, 1)); *)
+(*     Sm([(-1, 0, 1); (3, -2, -1)]); *)
+(*     Sm([(-2, 3, -1); (0, 1, -1)]); *)
+(*     Sm([(-2, 1, 1); (6, -3, -3)]); *)
+(*     Sm([(0, -1, 1); (2, -1, -1); (4, -3, -1)]); *)
+(*     Du((2, 1, -3), (3, 0, -3)); *)
+(*     Sm([(-1, 1, 0); (3, -3, 0); (5, -3, -2)]); *)
+(*     Sm([(2, -3, 1); (6, -3, -3)]); *)
+(*     Du((3, -2, -1), (4, -2, -2)); *)
+(*     Du((2, -1, -1), (2, -2, 0)); *)
+(*     Sm([(1, -1, 0); (5, -3, -2)]); *)
+(*     Sm([(1, 0, -1); (3, -2, -1); (5, -2, -3)]); *)
+(*     Du((-1, -1, 2), (0, -2, 2)); *)
+(*     Sm([(3, -2, -1); (5, -2, -3)]); *)
+(* ] *)
+(* ;; *)
 
+Printf.printf "%s\n" (string_of_couleur (est_partie config_basique test_partie));
+(* Printf.printf "%s\n" (string_of_couleur (est_partie config_basique partie_vert_gagne)); *)
 
-Printf.printf "%i\n" (score_joueur {
-    cases = [((-4, 2, 2), Vert); ((-2, 0, 2), Vert); ((1, -2, 1), Vert); ((0, 0, 0), Vert); ((-1, 2, -1), Vert); ((2, 0, -2), Vert)];
-    coul_joueurs = [Vert];
-    dim_plateau = 3 });
+(* affiche_plateau uuu; *)
