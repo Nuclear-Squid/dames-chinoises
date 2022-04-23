@@ -88,6 +88,19 @@ let string_of_coul_list (l: couleur list): string =
     in
     loop l "["
 
+let string_of_coup (cp: coup): string =
+    match cp with
+    | Du(c1, c2) -> "Du(" ^ string_of_case c1 ^ ", " ^ string_of_case c2 ^ ")"
+    | Sm(l) -> "Sm(" ^ string_of_case_list l ^ ")"
+
+let string_of_coup_list (l: coup list): string =
+    let rec loop (l: coup list) (str: string): string =
+        match l with
+        | [] -> str ^ "]"
+        | cp :: suite -> loop suite (str ^ "\t" ^ string_of_coup cp ^ ";\n")
+    in
+    loop l "Liste de coups : [\n"
+
 (* ···---————————————————————————---··· *)
 (* <==== Définition des fonctions ====> *)
 (* ···---————————————————————————---··· *)
@@ -308,8 +321,8 @@ let supprime_dans_config (config: configuration) (c: case): configuration =
     }
     
 
-(* Verifie que le saut est valide *)
-let rec est_saut_multiple (config: configuration) (case_liste: case list): bool =
+(* Vérifie que le saut d'une case a une autre est valide *)
+let est_saut (config: configuration) (c1: case) (c2: case): bool =
     (* Verifie que toutes les cases soient bien libres *)
     let est_libre_seg (config: configuration) (c1: case) (c2: case): bool =
         let rec loop (config: configuration) ((i, j, k): case)
@@ -322,21 +335,22 @@ let rec est_saut_multiple (config: configuration) (case_liste: case list): bool 
         in
         loop config c1 (vec_et_dist c1 c2)
     in
-    (* Vérifie que le saut d'une case a une autre est valide *)
-    let est_saut (config: configuration) (c1: case) (c2: case): bool =
-        let pivot_valide (c1: case) (c2: case): bool =
-            match calcule_pivot c1 c2 with
-            | None -> false
-            | Some(pivot) -> ( 
-                quelle_couleur config pivot <> Libre &&
-                est_libre_seg config c1 pivot &&
-                est_libre_seg config pivot c2 )
-        in
-        pivot_valide c1 c2 &&
-        quelle_couleur config c2 = Libre &&
-        est_dans_etoile c1 config.dim_plateau && (* le losange suffit non ? *)
-        est_dans_losange c2 config.dim_plateau
+    let pivot_valide (c1: case) (c2: case): bool =
+        match calcule_pivot c1 c2 with
+        | None -> false
+        | Some(pivot) -> ( 
+            quelle_couleur config pivot <> Libre &&
+            est_libre_seg config c1 pivot &&
+            est_libre_seg config pivot c2 )
     in
+    pivot_valide c1 c2 &&
+    quelle_couleur config c2 = Libre &&
+    est_dans_etoile c1 config.dim_plateau && (* le losange suffit non ? *)
+    est_dans_losange c2 config.dim_plateau
+
+
+(* Verifie que le saut est valide *)
+let rec est_saut_multiple (config: configuration) (case_liste: case list): bool =
     (* Vérifie que tous les sauts sont valides *)
     match case_liste with
     | [] -> failwith "Liste vide passé à `est_saut_multiple`"
@@ -400,21 +414,10 @@ let affiche_plateau (config: configuration): unit =
     in
     loop (2 * config.dim_plateau + 1)
 
-(* On nous dit de mettre cette fonction a jour mais elle existe pas donc je
-   vais l'inventer en entier *)
 (* Vérifie qu'un coup soit valide, si oui, le joue *)
 let mettre_a_jour_configuration (config: configuration) (action: coup): configuration =
-    (* Printf.printf "uuu\n"; *)
-    (* affiche_plateau config; *)
-    (* if est_coup_valide config action then appliquer_coup config action *)
-    (* else failwith "Ce coup est invalide, rejoue fdp" *)
-    let nouvelle_config =
-        if est_coup_valide config action then appliquer_coup config action
-        else failwith "Ce coup est invalide, rejoue fdp"
-    in
-    (* affiche_plateau nouvelle_config; *)
-    nouvelle_config
-
+    if est_coup_valide config action then appliquer_coup config action
+    else failwith "Ce coup est invalide, rejoue."
 
 (* ···---———————————————————---··· *)
 (* <==== Vérifier une partie ====> *)
@@ -442,26 +445,7 @@ let gagne (config: configuration): bool =
     score config = score_gagnant config.dim_plateau
 
 
-(* (1* Les boucles c'est de l'impératif et l'impératif c'est mal *1) *)
-(* let score_gagnant (dim: dimension): int = *)
-(*     let score = ref 0 *)
-(*     and fac = ref 1 *)
-(*     in *)
-(*     for i = dim * 2 downto dim + 1 *)
-(*     do *)
-(*         score := !score + (i * !fac); *)
-(*         fac := !fac + 1; *)
-(*     done; *)
-(*     !score *)
-
-
-(* (1* Butez moi fais chier merde *1) *)
-(* let est_partie (config: configuration) (liste_coups: coup list): couleur = *)
-(*     let config_finale: configuration = *)
-(*         List.fold_left mettre_a_jour_configuration config liste_coups *)
-(*     in *)
-
-(* Achevez mes souffrances putain *)
+(* J'ai jamais été aussi déçu de faire du code qui marche *)
 let est_partie (config: configuration) (liste_coups: coup list): couleur =
     let nb_joueurs = List.length config.coul_joueurs
     and nb_tours = List.length liste_coups
@@ -483,16 +467,82 @@ let est_partie (config: configuration) (liste_coups: coup list): couleur =
         List.map (
             List.fold_left mettre_a_jour_configuration config 
         ) n_premier_tours_par_joueurs2
+    and liste_sixieme_tours = List.init (nb_joueurs - 1) succ
     in
-    List.iter affiche_plateau dernier_etat_joueurs;
-    let ont_gagne_joueur = List.map gagne dernier_etat_joueurs
+    let der_etat_joueurs_tourne =
+        List.map (fun plateau_joueur ->
+            (List.fold_right (fun _ plateau ->
+                tourner_configuration plateau) liste_sixieme_tours plateau_joueur)
+        ) dernier_etat_joueurs
+    in
+    List.iter affiche_plateau der_etat_joueurs_tourne;
+    let ont_gagne_joueur = List.map gagne der_etat_joueurs_tourne
     in
     let ont_gagne_indices = List.mapi (fun i b -> (b, i)) ont_gagne_joueur
     in
-    match associe true ont_gagne_indices with
-    | None -> Libre
-    | Some(i) -> List.nth config.coul_joueurs ((nb_tours - nb_joueurs - 1 + i) mod nb_joueurs)
+    let ont_gagne_pour_de_vrai = List.filter (fun ((b, _): bool * 'a) -> b) ont_gagne_indices
+    in
+    match ont_gagne_pour_de_vrai with
+    | [] -> Libre
+    | (_, i) :: suite -> List.nth config.coul_joueurs ((i + nb_tours) mod nb_joueurs)
 
+
+
+(* ···---————————————————---··· *)
+(* <==== Calcul des coups ====> *)
+(* ···---————————————————---··· *)
+
+type arbreSaut =
+    | Noeud of case * (arbreSaut list)
+    | Fin
+
+let coups_possibles (config: configuration) (c: case): coup list =
+    let depl_unit_possibles (config: configuration) (c: case): coup list =
+        let cases_voisines = List.init 6 (fun n -> translate c (tourner_case n (1, -1, 0)))
+        and coup_valide (c1: case) (c2: case): coup option = 
+            if est_coup_valide config (Du(c1, c2)) then Some(Du(c1, c2))
+            else None
+        in
+        List.filter_map (coup_valide c) cases_voisines
+
+    and saut_mult_possibles (config: configuration) (c: case): coup list =
+        let vec_unitaires = 
+            List.init 6 (fun n -> tourner_case n (1, -1, 0)) @
+            List.init 6 (fun n -> tourner_case n (2, -1, -1))
+        and recup_cases_alligne (c: case) (vec: vecteur): case list =
+            let rec loop (c: case) (vec: vecteur) (rv_liste: case list): case list =
+                if est_dans_losange (translate c vec) config.dim_plateau then
+                    loop (translate c vec) vec ((translate c vec) :: rv_liste)
+                else
+                    rv_liste
+            in
+            loop c vec []
+        and saut_valide (chemin: case list) (c1: case) (c2: case): case option =
+            if (est_saut config c1 c2 && not (List.mem c2 chemin)) then
+                Some(c2)
+            else
+                None
+        in
+        let rec genere_arbre (config: configuration) (chemin: case list)
+                             (c: case): arbreSaut =
+            let cases_alligne = List.concat (
+                List.rev_map (recup_cases_alligne c) vec_unitaires )
+            in
+            let sauts_possibles = List.filter_map (saut_valide chemin c) cases_alligne
+            in
+            if List.length sauts_possibles = 0 then
+                Fin
+            else
+                Noeud(c, (List.map (genere_arbre config (c :: chemin)) sauts_possibles))
+        and concat_arbre (a: arbreSaut): case list list =
+            match a with
+            | Fin -> [[]]
+            | Noeud(c, branches) -> List.map ((fun c l -> c :: l) c) (List.concat (List.map concat_arbre branches))
+        in
+        List.map (fun cp -> Sm(cp)) (concat_arbre (genere_arbre config [] c))
+    in
+    (depl_unit_possibles config c) @ (saut_mult_possibles config c)
+            
 
 
 (* ···---—————————————————————————---··· *)
@@ -500,32 +550,18 @@ let est_partie (config: configuration) (liste_coups: coup list): couleur =
 (* ···---—————————————————————————---··· *)
 
 
-;;
-
 (* ···---—————---··· *)
 (* <==== Tests ====> *)
 (* ···---—————---··· *)
 
-(* let connard: int list = [10; 11; 12; 13; 14; 15; 16] *)
-(* let (uuu, iii) = List.partition (fun n -> n <= 13) connard *)
-(* ;; *)
-(* Printf.printf "uuu : %s\niii: %s\n" (string_of_int_list uuu) (string_of_int_list iii); *)
-
 (* let config_basique = remplir_init [Vert; Jaune; Rouge] 3 *)
-(* let uuu: configuration = bite config_basique [ *)
-(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
-(*     Du((-4, 3, 1), (-3, 3, 0)); *)
-(*     Du((-4, 2, 2), (-3, 1, 2)); *)
-(*     Sm([(-4, 2, 2); (-2, 0, 2)]); *)
-(*     Du((-3, 3, 0), (-2, 2, 0)); *)
-(*     Sm([(-4, 1, 3); (-2, 1, 1)]); *)
-(*     Du((-3, 1, 2), (-2, 1, 1)); *)
-(*     Du((-4, 2, 2), (-3, 1, 2)); *)
-(*     Sm([(-5, 3, 2); (-1, -1, 2)]); *)
-(* ] *)
-(* ;; *)
 
-let config_basique = remplir_init [Vert; Jaune; Rouge] 3
+let config_debile = {
+    cases = [((-1, 0, 1), Vert); ((0, 0, 0), Vert); ((0, 2, -2), Vert); ((0, -1, 1), Vert)];
+    coul_joueurs = [Vert];
+    dim_plateau = 3;
+}
+
 let test_partie: coup list = [
     Sm([(-5, 3, 2); (-3, 1, 2)]);
     Du((-4, 3, 1), (-3, 3, 0));
@@ -537,63 +573,6 @@ let test_partie: coup list = [
     Du((-4, 2, 2), (-3, 1, 2));
     Sm([(-5, 3, 2); (-1, -1, 2)]);
 ]
-
-(* let partie: coup list = [ *)
-(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
-(*     Du((-4, 2, 2), (-3, 1, 2)); *)
-(*     Sm([(-5, 2, 3); (-3, 2, 1)]); *)
-(*     Sm([(-4, 1, 3); (-2, 1, 1)]); *)
-(*     Sm([(-5, 3, 2); (-1, -1, 2)]); *)
-(*     Sm([(-4, 2, 2); (-2, 2, 0); (0, 2, -2)]); *)
-(* ] *)
-(* ;; *)
-
-(* let partie_vert_gagne: coup list = [ *)
-(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
-(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
-(*     Sm([(-5, 2, 3); (-3, 2, 1)]); *)
-(*     Sm([(-4, 1, 3); (-2, 1, 1)]); *)
-(*     Du((-4, 2, 2), (-3, 2, 1)); *)
-(*     Sm([(-4, 2, 2); (-2, 2, 0)]); *)
-(*     Sm([(-5, 2, 3); (-3, 2, 1); (-1, 0, 1)]); *)
-(*     Sm([(-5, 2, 3); (-1, 2, -1); (1, 0, -1)]); *)
-(*     Sm([(-4, 3, 1); (-2, 1, 1)]); *)
-(*     Sm([(-2, 1, 1); (0, 1, -1)]); *)
-(*     Du((-3, 1, 2), (-2, 1, 1)); *)
-(*     Sm([(-4, 1, 3); (0, 1, -1); (0, -3, 3); (4, -3, -1)]); *)
-(*     Sm([(-6, 3, 3); (-2, 1, 1); (0, -1, 1); (2, -3, 1)]); *)
-(*     Sm([(-6, 3, 3); (-2, 3, -1)]); *)
-(*     Sm([(-6, 3, 3); (-4, 3, 1)]); *)
-(*     Sm([(-4, 2, 2); (-2, 0, 2); (0, 0, 0); (0, 2, -2)]); *)
-(*     Sm([(-2, 1, 1); (-2, 5, -3); (0, 3, -3); (2, 1, -3)]); *)
-(*     Sm([(-5, 3, 2); (-3, 3, 0); (-1, 1, 0); (-1, -1, 2)]); *)
-(*     Sm([(-4, 3, 1); (-2, 1, 1); (0, -1, 1)]); *)
-(*     Sm([(1, 0, -1); (3, -2, -1)]); *)
-(*     Sm([(-2, 1, 1); (0, -1, 1); (2, -1, -1); (4, -1, -3)]); *)
-(*     Sm([(0, 1, -1); (4, -1, -3)]); *)
-(*     Sm([(-3, 2, 1); (1, 0, -1)]); *)
-(*     Sm([(-4, 3, 1); (0, 1, -1); (2, -1, -1)]); *)
-(*     Sm([(0, 2, -2); (4, -2, -2)]); *)
-(*     Sm([(-4, 3, 1); (4, -1, -3)]); *)
-(*     Du((-2, 2, 0), (-1, 1, 0)); *)
-(*     Sm([(-3, 1, 2); (1, -1, 0)]); *)
-(*     Sm([(-4, 1, 3); (-2, 1, 1); (6, -3, -3)]); *)
-(*     Du((-3, 2, 1), (-2, 1, 1)); *)
-(*     Sm([(-1, 0, 1); (3, -2, -1)]); *)
-(*     Sm([(-2, 3, -1); (0, 1, -1)]); *)
-(*     Sm([(-2, 1, 1); (6, -3, -3)]); *)
-(*     Sm([(0, -1, 1); (2, -1, -1); (4, -3, -1)]); *)
-(*     Du((2, 1, -3), (3, 0, -3)); *)
-(*     Sm([(-1, 1, 0); (3, -3, 0); (5, -3, -2)]); *)
-(*     Sm([(2, -3, 1); (6, -3, -3)]); *)
-(*     Du((3, -2, -1), (4, -2, -2)); *)
-(*     Du((2, -1, -1), (2, -2, 0)); *)
-(*     Sm([(1, -1, 0); (5, -3, -2)]); *)
-(*     Sm([(1, 0, -1); (3, -2, -1); (5, -2, -3)]); *)
-(*     Du((-1, -1, 2), (0, -2, 2)); *)
-(*     Sm([(3, -2, -1); (5, -2, -3)]); *)
-(* ] *)
-(* ;; *)
 
 let partie_vert_gagne2: coup list = [
     Sm([(-6, 3, 3); (-2, 1, 1)]);
@@ -631,12 +610,12 @@ let partie_vert_gagne2: coup list = [
     Du((2, -3, 1), (3, -3, 0));
     Sm([(2, -1, -1); (6, -3, -3)]);
 ]
+
 ;;
 
-(* Printf.printf "%s\n" (string_of_couleur (est_partie config_basique test_partie)); *)
-(* Printf.printf "%s\n" (string_of_couleur (est_partie config_basique partie_vert_gagne)); *)
-(* Printf.printf "%s\n" (string_of_couleur (est_partie config_basique partie)); *)
-Printf.printf "%s\n" (string_of_couleur (est_partie config_basique partie_vert_gagne2));
-(* Printf.printf "%b\n" (est_saut_multiple config_basique [(-6, 3, 3); (-2, 1, 1)]); *)
+(* Printf.printf "%s\n" (string_of_couleur (est_partie config_basique partie_vert_gagne2)); *)
 
-(* affiche_plateau config_basique; *)
+(* Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_basique (-5, 3, 2))); *)
+
+affiche_plateau config_debile;
+Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_debile (0, -1, 1)));
