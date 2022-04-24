@@ -109,6 +109,14 @@ let string_of_coup_list (l: coup list): string =
     in
     loop l "Liste de coups : [\n"
 
+let string_of_coup_score_list (l: (int * coup) list): string =
+    let rec loop (l: (int * coup) list) (str: string): string =
+        match l with
+        | [] -> str ^ "]"
+        | (score, cp) :: suite -> loop suite (str ^ "\t" ^ string_of_int score ^ " : " ^ string_of_coup cp ^ ";\n")
+    in
+    loop l "Liste de coups (et scores) : [\n"
+
 (* ···---————————————————————————---··· *)
 (* <==== Définition des fonctions ====> *)
 (* ···---————————————————————————---··· *)
@@ -387,7 +395,7 @@ let est_coup_valide (config: configuration) (action: coup): bool =
 (* Joue un coup donné *)
 let appliquer_coup (config: configuration) (action: coup): configuration =
     let ajoute_case (config: configuration) (c: case): configuration =
-        tourner_configuration {
+        {
         cases = (c, List.hd(config.coul_joueurs)) :: config.cases;
         coul_joueurs = config.coul_joueurs;
         dim_plateau = config.dim_plateau
@@ -424,7 +432,7 @@ let affiche_plateau (config: configuration): unit =
 
 (* Vérifie qu'un coup soit valide, si oui, le joue *)
 let mettre_a_jour_configuration (config: configuration) (action: coup): configuration =
-    if est_coup_valide config action then appliquer_coup config action
+    if est_coup_valide config action then tourner_configuration (appliquer_coup config action)
     else failwith "Ce coup est invalide, rejoue."
 
 (* ···---———————————————————---··· *)
@@ -502,8 +510,10 @@ let est_partie (config: configuration) (liste_coups: coup list): couleur =
 
 type arbreSaut =
     | Noeud of case * (arbreSaut list)
+    | AucunSaut
     | Fin
 
+(* Renvoie une liste de tous les coups possible en partant d'une case donné *)
 let coups_possibles (config: configuration) (c: case): coup list =
     let depl_unit_possibles (config: configuration) (c: case): coup list =
         let cases_voisines = List.init 6 (fun n -> translate c (tourner_case n (1, -1, 0)))
@@ -539,8 +549,10 @@ let coups_possibles (config: configuration) (c: case): coup list =
             let sauts_possibles = List.filter_map (saut_valide chemin c) cases_alligne
             in
             if List.length sauts_possibles = 0 then
-                (* Fin *)
-                Noeud(c, [Fin])
+                if List.length chemin = 0 then
+                    AucunSaut
+                else
+                    Noeud(c, [Fin])
             else
                 Noeud(c, (List.map (genere_arbre config (c :: chemin)) sauts_possibles))
         and concat_arbre (a: arbreSaut): case list list =
@@ -565,6 +577,7 @@ let coups_possibles (config: configuration) (c: case): coup list =
                 let inter_sauts = List.init (len - 2) (fun n -> n_premier_elem saut (n + 2))
                 in
                 List.filter (fun l -> not (List.mem l liste_sauts)) inter_sauts
+                (* List.filter (fun l -> not (List.mem l liste_sauts)) liste_sauts *)
             in
             let rec loop (liste_sauts: case list list) (rv_liste: case list list): case list list =
                 match liste_sauts with
@@ -573,11 +586,39 @@ let coups_possibles (config: configuration) (c: case): coup list =
             in
             loop liste_sauts liste_sauts
         in
-        List.map (fun cp -> Sm(cp)) (recup_inter_sauts (concat_arbre (genere_arbre config [] c)))
+        let arbre = genere_arbre config [] c
+        in
+        match arbre with
+        | AucunSaut -> []
+        | _ -> List.map (fun cp -> Sm(cp)) (recup_inter_sauts (concat_arbre arbre))
     in
     (depl_unit_possibles config c) @ (saut_mult_possibles config c)
             
 
+(* Renvoie le meilleur coup possible *)
+let strategie_gloutonne (config: configuration): coup =
+    let delta_score (config: configuration) (action: coup): int =
+        (score (appliquer_coup config action)) - (score config)
+    in
+    let meilleur_coup (config: configuration) (liste_coup: coup list): coup =
+        let coups_et_scores = List.map (fun cp -> ((delta_score config cp), cp)) liste_coup
+        in
+        let coups_tries = List.rev (List.sort compare coups_et_scores)
+        in
+        Printf.printf "%s\n" (string_of_coup_score_list coups_tries);
+        let (_, super_coup) = List.nth coups_tries 0
+        in
+        super_coup
+    and joueur = List.hd config.coul_joueurs
+    in
+    let cases_joueur =
+        List.filter_map (fun (c, coul) -> if coul = joueur then Some(c) else None) config.cases
+    in
+    Printf.printf "%s\n" (string_of_case_list cases_joueur);
+    let tous_les_coups_possibles = List.concat (List.map (coups_possibles config) cases_joueur)
+    in
+    Printf.printf "%s\n" (string_of_coup_list tous_les_coups_possibles);
+    meilleur_coup config tous_les_coups_possibles
 
 (* ···---—————---··· *)
 (* <==== Tests ====> *)
@@ -646,5 +687,7 @@ let partie_vert_gagne2: coup list = [
 
 (* Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_basique (-5, 3, 2))); *)
 
-affiche_plateau config_debile;
-Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_debile (0, -1, 1)));
+(* affiche_plateau config_debile; *)
+(* Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_debile (0, -1, 1))); *)
+Printf.printf "%s\n" (string_of_coup (strategie_gloutonne config_basique));
+(* Printf.printf "%i\n" (score config_debile); *)
