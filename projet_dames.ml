@@ -78,6 +78,14 @@ let string_of_case_list (l: case list): string =
     in
     loop l "["
 
+let string_of_case_list_list (matrice_case: case list list): string = 
+    let rec loop (matrice_case: case list list) (str: string): string =
+        match matrice_case with
+        | [] -> str ^ "]"
+        | liste_case :: suite -> loop suite (str ^ "\t" ^ string_of_case_list liste_case ^ ";\n")
+    in
+    loop matrice_case "matrice : [\n"
+
 let string_of_coul_list (l: couleur list): string =
     let rec loop (l: couleur list) (str: string): string =
         match l with 
@@ -369,7 +377,7 @@ let est_coup_valide (config: configuration) (action: coup): bool =
             (* vérifie que la case appartient au joueur dont c'est le tour *)
     in
     match action with
-    | Sm(liste_case) -> est_saut_multiple config liste_case
+    | Sm(liste_case) -> est_saut_multiple (supprime_dans_config config (List.hd liste_case)) liste_case
     | Du(c1, c2) -> ( (est_bon_joueur config c1) &&
         (quelle_couleur config c2 == Libre) &&
         (sont_cases_voisines c1 c2) &&
@@ -518,7 +526,7 @@ let coups_possibles (config: configuration) (c: case): coup list =
             in
             loop c vec []
         and saut_valide (chemin: case list) (c1: case) (c2: case): case option =
-            if (est_saut config c1 c2 && not (List.mem c2 chemin)) then
+            if (est_saut (supprime_dans_config config c) c1 c2 && not (List.mem c2 chemin)) then
                 Some(c2)
             else
                 None
@@ -531,33 +539,54 @@ let coups_possibles (config: configuration) (c: case): coup list =
             let sauts_possibles = List.filter_map (saut_valide chemin c) cases_alligne
             in
             if List.length sauts_possibles = 0 then
-                Fin
+                (* Fin *)
+                Noeud(c, [Fin])
             else
                 Noeud(c, (List.map (genere_arbre config (c :: chemin)) sauts_possibles))
         and concat_arbre (a: arbreSaut): case list list =
             match a with
             | Fin -> [[]]
-            | Noeud(c, branches) -> List.map ((fun c l -> c :: l) c) (List.concat (List.map concat_arbre branches))
+            | Noeud(c, branches) -> (
+                List.map ((fun c l -> c :: l) c) (List.concat (List.map concat_arbre branches))
+            )
+        and recup_inter_sauts (liste_sauts: case list list): case list list =
+            let decoupe_saut (liste_sauts: case list list) (saut: case list) =
+                let n_premier_elem (l: 'a list) (n: int): 'a list =
+                    let rec loop (l: 'a list) (n: int) (rv_liste: 'a list): 'a list =
+                        match (l, n) with
+                        | (_, 0) -> rv_liste
+                        | ([], _) -> failwith "trops d'elem pemandés à `n_premier_elem`"
+                        | ((elem :: suite), _) -> loop suite (n-1) (rv_liste @ [elem])
+                    in
+                    loop l n []
+                in
+                let len = List.length saut
+                in
+                let inter_sauts = List.init (len - 2) (fun n -> n_premier_elem saut (n + 2))
+                in
+                List.filter (fun l -> not (List.mem l liste_sauts)) inter_sauts
+            in
+            let rec loop (liste_sauts: case list list) (rv_liste: case list list): case list list =
+                match liste_sauts with
+                | [] -> rv_liste
+                | saut :: suite -> loop suite (rv_liste @ (decoupe_saut rv_liste saut))
+            in
+            loop liste_sauts liste_sauts
         in
-        List.map (fun cp -> Sm(cp)) (concat_arbre (genere_arbre config [] c))
+        List.map (fun cp -> Sm(cp)) (recup_inter_sauts (concat_arbre (genere_arbre config [] c)))
     in
     (depl_unit_possibles config c) @ (saut_mult_possibles config c)
             
-
-
-(* ···---—————————————————————————---··· *)
-(* <==== Affichage dans la console ====> *)
-(* ···---—————————————————————————---··· *)
 
 
 (* ···---—————---··· *)
 (* <==== Tests ====> *)
 (* ···---—————---··· *)
 
-(* let config_basique = remplir_init [Vert; Jaune; Rouge] 3 *)
+let config_basique = remplir_init [Vert; Jaune; Rouge] 3
 
 let config_debile = {
-    cases = [((-1, 0, 1), Vert); ((0, 0, 0), Vert); ((0, 2, -2), Vert); ((0, -1, 1), Vert)];
+    cases = [((-1, 0, 1), Vert); ((0, 0, 0), Vert); ((0, 2, -2), Vert); ((0, -1, 1), Vert); ((1, 2, -3), Vert); ((3, 0, -3), Vert); ((5, -2, -3), Vert)];
     coul_joueurs = [Vert];
     dim_plateau = 3;
 }
