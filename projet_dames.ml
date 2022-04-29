@@ -13,9 +13,8 @@ type couleur = Vert | Jaune | Rouge | Noir | Bleu | Marron (* Les couleurs des j
              | Code of string (* Chaine de 3 caractères *)
 
 type case_coloree = case * couleur (* Position et couleur d'une case *)
-(* type configuration = case_coloree list * couleur list * dimension (1* état du plateau *1) *)
 
-(* c'était vraiment trop demandé d'en faire un struct putain?? *)
+(* On a transformé le type configuration en un struct pour avoir des éléments nommés *)
 type configuration = {
     cases: case_coloree list;
     coul_joueurs: couleur list;
@@ -351,11 +350,6 @@ let est_saut (config: configuration) (c1: case) (c2: case): bool =
                 | Libre -> loop config (i+x, j+y, k+z) ((x, y, z), distance-1)
                 | _     -> false
         in
-        (* Printf.printf "%s\n" (string_of_case (vec_et_dist c1 c2)); *)
-        (* Printf.printf "%s -> %s\n" (string_of_case c1) (string_of_case c2); *)
-        (* let (bite, _) = vec_et_dist c1 c2 *)
-        (* in *)
-        (* Printf.printf "%s\n" (string_of_case bite); *)
         loop config c1 (vec_et_dist c1 c2)
     in
     let pivot_valide (c1: case) (c2: case): bool =
@@ -553,10 +547,14 @@ let coups_possibles (config: configuration) (c: case): coup list =
             | [] -> chemins
             | _ -> chemins @ loop config nouveaux_sauts
         in
-        List.rev_map (fun cp -> Sm(cp)) (loop config [[c]])
+        let sauts = List.map (fun cp -> Sm(cp)) (loop config [[c]])
+        in
+        match sauts with
+        | []  -> failwith "gros prblème à `coups_possibles`"
+        | cp_absurde :: reste -> reste
     in
-    let config_sans_depart = supprime_dans_config config c in
-    depl_unit_possibles config_sans_depart c @ sauts_mult_possibles config_sans_depart c
+    depl_unit_possibles config c @
+    sauts_mult_possibles (supprime_dans_config config c) c
 
 (* Renvoie le meilleur coup possible *)
 let strategie_gloutonne (config: configuration): coup =
@@ -568,7 +566,7 @@ let strategie_gloutonne (config: configuration): coup =
         in
         let coups_tries = List.rev (List.sort compare coups_et_scores)
         in
-        Printf.printf "%s\n" (string_of_coup_score_list coups_tries);
+        (* Printf.printf "%s\n" (string_of_coup_score_list coups_tries); *)
         let (_, super_coup) = List.nth coups_tries 0
         in
         super_coup
@@ -577,10 +575,10 @@ let strategie_gloutonne (config: configuration): coup =
     let cases_joueur =
         List.filter_map (fun (c, coul) -> if coul = joueur then Some(c) else None) config.cases
     in
-    Printf.printf "%s\n" (string_of_case_list cases_joueur);
+    (* Printf.printf "%s\n" (string_of_case_list cases_joueur); *)
     let tous_les_coups_possibles = List.concat (List.map (coups_possibles config) cases_joueur)
     in
-    Printf.printf "%s\n" (string_of_coup_list tous_les_coups_possibles);
+    (* Printf.printf "%s\n" (string_of_coup_list tous_les_coups_possibles); *)
     meilleur_coup config tous_les_coups_possibles
 
 (* ···---—————---··· *)
@@ -650,5 +648,6 @@ let rec test_coups_possibles (config: configuration) (liste_coup: coup list): un
 ;;
 
 affiche_plateau config_debile;
-Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_debile (0, -1, 1)));
+(* Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_debile (0, -1, 1))); *)
 test_coups_possibles config_debile (coups_possibles config_debile (0, -1, 1));
+Printf.printf "%s\n" (string_of_coup (strategie_gloutonne config_debile));
