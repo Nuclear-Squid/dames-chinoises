@@ -362,7 +362,6 @@ let est_saut (config: configuration) (c1: case) (c2: case): bool =
         match calcule_pivot c1 c2 with
         | None -> false
         | Some(pivot) -> (
-            
             quelle_couleur config pivot <> Libre &&
             est_libre_seg config c1 pivot &&
             est_libre_seg config pivot c2 )
@@ -516,12 +515,6 @@ let est_partie (config: configuration) (liste_coups: coup list): couleur =
 (* <==== Calcul des coups ====> *)
 (* ···---————————————————---··· *)
 
-type arbreSaut =
-    | Noeud of case * (arbreSaut list)
-    | AucunSaut
-    | Fin
-
-(* Renvoie une liste de tous les coups possible en partant d'une case donné *)
 let coups_possibles (config: configuration) (c: case): coup list =
     let depl_unit_possibles (config: configuration) (c: case): coup list =
         let cases_voisines =
@@ -534,174 +527,36 @@ let coups_possibles (config: configuration) (c: case): coup list =
         in
         List.filter_map (coup_valide c) cases_voisines
 
-    and saut_mult_possibles (config: configuration) (c: case): coup list =
-        (* let saut_possible (chemin: case list) (c1: case) (c2: case): case option = *)
-        (*     if (est_saut (supprime_dans_config config c) c1 c2 && *)
-        (*         not (List.mem c2 chemin)) then *)
-        (*         Some(c2) *)
-        (*     else *)
-        (*         None *)
-        (* in *)
-        let saut_possible (config: configuration) (c1: case) (c2: case): case option =
-            let case_arrivee: case = translate c2 (diff_case c1 c2)
+    and sauts_mult_possibles (config: configuration) (c: case): coup list =
+        let saut_valides (config: configuration) (chemin: case list)
+                        (pivot: case): case list option =
+            let case_depart = der_liste chemin in
+            let case_arrivee = translate pivot (diff_case case_depart pivot)
             in
-            (* if (est_dans_losange case_arrivee config.dim_plateau && *)
-            (*     quelle_couleur config case_arrivee = Libre) *)
-            (* then *)
-            if est_saut config c1 case_arrivee then
-                Some(case_arrivee)
+            if (est_saut config case_depart case_arrivee &&
+                not (List.mem case_arrivee chemin))
+            then
+                Some(chemin @ [case_arrivee])
             else
                 None
         in
-        let rec genere_arbre (config: configuration) (chemin: case list)
-                             (c: case): arbreSaut =
-            let cases_plateau = List.rev_map (fun (c, _) -> c) config.cases
-            in
-            (* Printf.printf "%s\n" (string_of_case_list cases_plateau); *)
-            let sauts = List.filter_map (saut_possible config c) cases_plateau
-            in
-            (* Printf.printf "%s -> %s\n" (string_of_case c) (string_of_case_list sauts); *)
-            let nouveaux_sauts = List.filter (fun c -> not (List.mem c chemin)) sauts
-            in
-            (* Printf.printf "%s -> %s\n" (string_of_case c) (string_of_case_list nouveaux_sauts); *)
-            Printf.printf "————————————\n";
-            if nouveaux_sauts = [] then
-                if chemin = [] then (
-                    (* Printf.printf "==============\n"; *)
-                    AucunSaut
-                )
-                else (
-                    (* Printf.printf "——————————————\n"; *)
-                    Fin
-                )
-            else
-                Noeud(c, (List.map (genere_arbre config (c :: chemin)) nouveaux_sauts))
-            (* let cases_alligne = List.concat ( *)
-            (*     List.rev_map (recup_cases_alligne c) vec_unitaires ) *)
-            (* in *)
-            (* let sauts_possibles = List.filter_map (saut_possible chemin c) cases_alligne *)
-            (* in *)
-            (* if List.length sauts_possibles = 0 then *)
-            (*     if List.length chemin = 0 then *)
-            (*         AucunSaut *)
-            (*     else *)
-            (*         Noeud(c, [Fin]) *)
-            (* else *)
-            (*     Noeud(c, (List.map (genere_arbre config (c :: chemin)) sauts_possibles)) *)
-
-        and concat_arbre (a: arbreSaut): case list list =
-            match a with
-            | AucunSaut -> failwith "arbre vide passé à `concat_arbre`"
-            | Fin -> [[]]
-            | Noeud(c, branches) -> (
-                List.map ((fun c l -> c :: l) c) (List.concat (List.map concat_arbre branches))
-            )
-        and recup_inter_sauts (liste_sauts: case list list): case list list =
-            let decoupe_saut (liste_sauts: case list list) (saut: case list) =
-                let n_premier_elem (l: 'a list) (n: int): 'a list =
-                    let rec loop (l: 'a list) (n: int) (rv_liste: 'a list): 'a list =
-                        match (l, n) with
-                        | (_, 0) -> rv_liste
-                        | ([], _) -> failwith "trops d'elem pemandés à `n_premier_elem`"
-                        | ((elem :: suite), _) -> loop suite (n-1) (rv_liste @ [elem])
-                    in
-                    loop l n []
-                in
-                let len = List.length saut
-                in
-                let inter_sauts = List.init (len - 2) (fun n -> n_premier_elem saut (n + 2))
-                in
-                List.filter (fun l -> not (List.mem l liste_sauts)) inter_sauts
-                (* List.filter (fun l -> not (List.mem l liste_sauts)) liste_sauts *)
-            in
-            let rec loop (liste_sauts: case list list) (rv_liste: case list list): case list list =
-                match liste_sauts with
-                | [] -> rv_liste
-                | saut :: suite -> loop suite (rv_liste @ (decoupe_saut rv_liste saut))
-            in
-            loop liste_sauts liste_sauts
+        let sauts_possibles (config: configuration)
+                            (chemin: case list): case list list =
+            let (cases_plateau, _) = List.split config.cases in
+            List.filter_map (saut_valides config chemin) cases_plateau
         in
-        let arbre = genere_arbre config [] c
+        let rec loop (config: configuration) (chemins: case list list): case list list =
+            let nouveaux_sauts = List.concat (
+                List.rev_map (sauts_possibles config) chemins
+            ) in
+            match nouveaux_sauts with
+            | [] -> chemins
+            | _ -> chemins @ loop config nouveaux_sauts
         in
-        match arbre with
-        | AucunSaut -> []
-        | _ -> List.map (fun cp -> Sm(cp)) (recup_inter_sauts (concat_arbre arbre))
+        List.rev_map (fun cp -> Sm(cp)) (loop config [[c]])
     in
-    (depl_unit_possibles config c) @ (saut_mult_possibles config c)
-            
-
-    (* and saut_mult_possibles (config: configuration) (c: case): coup list = *)
-    (*     let vec_unitaires = *) 
-    (*         List.init 6 (fun n -> tourner_case n (1, -1, 0)) @ *)
-    (*         List.init 6 (fun n -> tourner_case n (2, -1, -1)) *)
-    (*     and recup_cases_alligne (c: case) (vec: vecteur): case list = *)
-    (*         let rec loop (c: case) (vec: vecteur) (rv_liste: case list): case list = *)
-    (*             if est_dans_losange (translate c vec) config.dim_plateau then *)
-    (*                 loop (translate c vec) vec ((translate c vec) :: rv_liste) *)
-    (*             else *)
-    (*                 rv_liste *)
-    (*         in *)
-    (*         loop c vec [] *)
-    (*     and saut_valide (chemin: case list) (c1: case) (c2: case): case option = *)
-    (*         if (est_saut (supprime_dans_config config c) c1 c2 && not (List.mem c2 chemin)) then *)
-    (*             Some(c2) *)
-    (*         else *)
-    (*             None *)
-    (*     in *)
-    (*     let rec genere_arbre (config: configuration) (chemin: case list) *)
-    (*                          (c: case): arbreSaut = *)
-    (*         let cases_alligne = List.concat ( *)
-    (*             List.rev_map (recup_cases_alligne c) vec_unitaires ) *)
-    (*         in *)
-    (*         let sauts_possibles = List.filter_map (saut_valide chemin c) cases_alligne *)
-    (*         in *)
-    (*         if List.length sauts_possibles = 0 then *)
-    (*             if List.length chemin = 0 then *)
-    (*                 AucunSaut *)
-    (*             else *)
-    (*                 Noeud(c, [Fin]) *)
-    (*         else *)
-    (*             Noeud(c, (List.map (genere_arbre config (c :: chemin)) sauts_possibles)) *)
-    (*     and concat_arbre (a: arbreSaut): case list list = *)
-    (*         match a with *)
-    (*         | AucunSaut -> failwith "arbre vide passé à `concat_arbre`" *)
-    (*         | Fin -> [[]] *)
-    (*         | Noeud(c, branches) -> ( *)
-    (*             List.map ((fun c l -> c :: l) c) (List.concat (List.map concat_arbre branches)) *)
-    (*         ) *)
-    (*     and recup_inter_sauts (liste_sauts: case list list): case list list = *)
-    (*         let decoupe_saut (liste_sauts: case list list) (saut: case list) = *)
-    (*             let n_premier_elem (l: 'a list) (n: int): 'a list = *)
-    (*                 let rec loop (l: 'a list) (n: int) (rv_liste: 'a list): 'a list = *)
-    (*                     match (l, n) with *)
-    (*                     | (_, 0) -> rv_liste *)
-    (*                     | ([], _) -> failwith "trops d'elem pemandés à `n_premier_elem`" *)
-    (*                     | ((elem :: suite), _) -> loop suite (n-1) (rv_liste @ [elem]) *)
-    (*                 in *)
-    (*                 loop l n [] *)
-    (*             in *)
-    (*             let len = List.length saut *)
-    (*             in *)
-    (*             let inter_sauts = List.init (len - 2) (fun n -> n_premier_elem saut (n + 2)) *)
-    (*             in *)
-    (*             List.filter (fun l -> not (List.mem l liste_sauts)) inter_sauts *)
-    (*             (1* List.filter (fun l -> not (List.mem l liste_sauts)) liste_sauts *1) *)
-    (*         in *)
-    (*         let rec loop (liste_sauts: case list list) (rv_liste: case list list): case list list = *)
-    (*             match liste_sauts with *)
-    (*             | [] -> rv_liste *)
-    (*             | saut :: suite -> loop suite (rv_liste @ (decoupe_saut rv_liste saut)) *)
-    (*         in *)
-    (*         loop liste_sauts liste_sauts *)
-    (*     in *)
-    (*     let arbre = genere_arbre config [] c *)
-    (*     in *)
-    (*     match arbre with *)
-    (*     | AucunSaut -> [] *)
-    (*     | _ -> List.map (fun cp -> Sm(cp)) (recup_inter_sauts (concat_arbre arbre)) *)
-    (* in *)
-    (* (depl_unit_possibles config c) @ (saut_mult_possibles config c) *)
-            
+    let config_sans_depart = supprime_dans_config config c in
+    depl_unit_possibles config_sans_depart c @ sauts_mult_possibles config_sans_depart c
 
 (* Renvoie le meilleur coup possible *)
 let strategie_gloutonne (config: configuration): coup =
@@ -735,7 +590,6 @@ let strategie_gloutonne (config: configuration): coup =
 let config_basique = remplir_init [Vert; Jaune; Rouge] 3
 
 let config_debile = {
-    (* cases = [((-1, 0, 1), Vert); ((0, 0, 0), Vert); ((0, 2, -2), Vert); ((0, -1, 1), Vert); ((1, 2, -3), Vert); ((3, 0, -3), Vert); ((5, -2, -3), Vert); ((-5, 2, 3), Rouge)]; *)
     cases = [((-1, 0, 1), Vert); ((0, 0, 0), Vert); ((0, 2, -2), Vert); ((0, -1, 1), Vert); ((1, 2, -3), Vert); ((3, 0, -3), Vert); ((5, -2, -3), Vert)];
     coul_joueurs = [Vert];
     dim_plateau = 3;
@@ -751,20 +605,7 @@ let config_turbo_debile = {
     dim_plateau = 3;
 }
 
-
-(* let test_partie: coup list = [ *)
-(*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
-(*     Du((-4, 3, 1), (-3, 3, 0)); *)
-(*     Du((-4, 2, 2), (-3, 1, 2)); *)
-(*     Sm([(-4, 2, 2); (-2, 0, 2)]); *)
-(*     Du((-3, 3, 0), (-2, 2, 0)); *)
-(*     Sm([(-4, 1, 3); (-2, 1, 1)]); *)
-(*     Du((-3, 1, 2), (-2, 1, 1)); *)
-(*     Du((-4, 2, 2), (-3, 1, 2)); *)
-(*     Sm([(-5, 3, 2); (-1, -1, 2)]); *)
-(* ] *)
-
-(* let partie_vert_gagne2: coup list = [ *)
+(* let partie_vert_gagne: coup list = [ *)
 (*     Sm([(-6, 3, 3); (-2, 1, 1)]); *)
 (*     Sm([(-5, 3, 2); (-3, 1, 2)]); *)
 (*     Du((-4, 1, 3), (-3, 1, 2)); *)
@@ -801,20 +642,13 @@ let config_turbo_debile = {
 (*     Sm([(2, -1, -1); (6, -3, -3)]); *)
 (* ] *)
 
+let rec test_coups_possibles (config: configuration) (liste_coup: coup list): unit =
+    match liste_coup with
+    | [] -> ()
+    | saut :: suite -> assert (est_coup_valide config saut); test_coups_possibles config suite
+
 ;;
 
-(* Printf.printf "%s\n" (string_of_couleur (est_partie config_basique partie_vert_gagne2)); *)
-
-(* Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_basique (-5, 3, 2))); *)
-
-(* Printf.printf "%b\n" (est_saut config_debile (3, 0, -3) (-3, 4, -1)); *)
-(* Printf.printf "%b\n" (est_saut config_debile (5, -2, -3) (-5, 3, 2)); *)
-
-(* affiche_plateau config_debile; *)
-affiche_plateau config_turbo_debile;
-(* Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_debile (0, -1, 1))); *)
-Printf.printf "%s\n" (string_of_coup_list (coups_possibles (supprime_dans_config config_turbo_debile (0, 0, 0)) (0, 0, 0)));
-(* string_of_coup_list (coups_possibles config_debile (0, -1, 1)); *)
-(* string_of_coup_list (coups_possibles config_basique (-6, 3, 3)); *)
-(* Printf.printf "%s\n" (string_of_coup (strategie_gloutonne config_basique)); *)
-(* Printf.printf "%i\n" (score config_debile); *)
+affiche_plateau config_debile;
+Printf.printf "%s\n" (string_of_coup_list (coups_possibles config_debile (0, -1, 1)));
+test_coups_possibles config_debile (coups_possibles config_debile (0, -1, 1));
